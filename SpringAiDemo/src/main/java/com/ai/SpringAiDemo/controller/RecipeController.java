@@ -1,7 +1,11 @@
 package com.ai.SpringAiDemo.controller;
 
 import com.ai.SpringAiDemo.Model.Recipe;
+import com.ai.SpringAiDemo.domain.Allergy;
+import com.ai.SpringAiDemo.domain.User;
+import com.ai.SpringAiDemo.persistence.UserRepository;
 import com.ai.SpringAiDemo.service.RecipeService;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -10,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 @CrossOrigin(origins = "*")
 public class RecipeController {
     private final RecipeService recipeService;
-
     public RecipeController(RecipeService recipeService) {
         this.recipeService = recipeService;
     }
@@ -35,19 +38,20 @@ public class RecipeController {
         return ResponseEntity.ok(recipe);
     }
 
-
-    @GetMapping("/generate-safe")
+    @GetMapping(value = "/generate-safe", produces = "text/plain;charset=UTF-8")
     public ResponseEntity<String> generateSafeRecipe(
             @RequestParam String userId,
             @RequestParam String ingredients,
             @RequestParam(defaultValue = "any") String cuisine) {
-
         String recipe = recipeService.createSafeRecipe(userId, ingredients, cuisine);
-        return ResponseEntity.ok(recipe);
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(recipe);
     }
 
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Recipe service is running!");
     }
+
 }

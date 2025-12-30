@@ -15,10 +15,16 @@ import java.util.function.Function;
 public class RecipeService {
     private final ChatClient chatClient;
     private final UserRepository userRepository;
+    private final Function<UserAllergyRequest, UserAllergyResponse> userAllergyFunction;
+    private final Function<IngredientCheckRequest, IngredientCheckResponse> ingredientCheckFunction;
 
     public RecipeService(ChatClient.Builder chatClientBuilder, UserRepository userRepository) {
-        this.chatClient = chatClientBuilder.build();
         this.userRepository = userRepository;
+
+        this.userAllergyFunction = createUserAllergyFunction();
+        this.ingredientCheckFunction = createIngredientCheckFunction();
+
+        this.chatClient = chatClientBuilder.build();
     }
 
     // Method 1: Basic text recipe
@@ -71,35 +77,96 @@ public class RecipeService {
                 .entity(Recipe.class);
     }
 
-    // Method 3: Safe recipe with function calling
-    // The @Bean functions below will be automatically available to ChatClient
-    public String createSafeRecipe(String userId,
-                                   String ingredients,
-                                   String cuisine) {
+    // Method 3: Safe recipe with allergy checking
+    public String createSafeRecipe(String userId, String ingredients, String cuisine) {
+        // Use the stored function instead of calling @Bean method
+        var allergyRequest = new UserAllergyRequest(userId);
+        var allergyResponse = userAllergyFunction.apply(allergyRequest);
+
+        // Log for debugging
+
+
+        // Build the allergen list as a string
+        String allergenList = allergyResponse.allergies().isEmpty()
+                ? "none"
+                : String.join(", ", allergyResponse.allergies());
+
         var template = """
-                Create a {cuisine} recipe for user {userId} using these ingredients: {ingredients}.
-                
-                IMPORTANT: 
-                1. First, call the getUserAllergies function to check what user {userId} is allergic to
-                2. Then, call checkIngredientAvailability to verify each ingredient is in stock
-                3. Only use ingredients that are both safe and available
-                4. Create a complete recipe avoiding all allergens
-                5. Explain which ingredients were excluded and why
-                """;
+            You are creating a recipe for a user with SEVERE FOOD ALLERGIES.
+            
+            USER ALLERGIES: {allergens}
+            
+            Available ingredients: {ingredients}
+            Cuisine: {cuisine}
+            
+            SAFETY PROTOCOL (CRITICAL - LIFE-THREATENING IF VIOLATED):
+            
+            Step 1: Identify dangerous ingredients
+            - User is allergic to: {allergens}
+            - From the ingredient list "{ingredients}", identify which items are allergens:
+              * If "shellfish" is an allergen, then shrimp, crab, lobster, prawns are FORBIDDEN
+              * If "peanuts" is an allergen, then peanuts, peanut butter, peanut oil are FORBIDDEN
+              * If "dairy" is an allergen, then milk, cheese, butter, cream are FORBIDDEN
+            
+            Step 2: Remove ALL allergens
+            - Cross out every dangerous ingredient from your list
+            - Never use them in the recipe under any circumstances
+            
+            Step 3: Create recipe with ONLY safe ingredients
+            - Use only the remaining safe ingredients
+            - Add other safe ingredients as needed
+            
+            VERIFICATION CHECKLIST:
+            Before finalizing the recipe, verify:
+            [ ] Does the ingredient list contain any allergens? If YES, start over
+            [ ] Does the title mention any allergens? If YES, change the title
+            [ ] Would this recipe kill the user? If YES, you have failed
+            
+            Format your response:
+            
+            [Recipe Title - NO allergen names allowed in title]
+            
+            This recipe is safe for users allergic to {allergens}.
+            
+            Ingredients:
+            - [list ONLY safe ingredients]
+            
+            Instructions:
+            1. [steps using ONLY safe ingredients]
+            
+            Prep Time: [time]
+            Servings: [number]
+            Difficulty: [level]
+            
+            Note: This recipe excludes [specific items removed from ingredient list] due to your allergies to {allergens}.
+            """;
 
         return chatClient.prompt()
+                .system("""
+                    You are a medical-grade recipe generator for users with life-threatening food allergies.
+                    
+                    ABSOLUTE RULES:
+                    1. If user is allergic to shellfish, NEVER include: shrimp, crab, lobster, prawns, clams, mussels, oysters
+                    2. If user is allergic to peanuts, NEVER include: peanuts, peanut butter, peanut oil, peanut sauce
+                    3. If user is allergic to dairy, NEVER include: milk, cheese, butter, cream, yogurt
+                    
+                    A single mistake can hospitalize or kill the user.
+                    When in doubt, exclude the ingredient.
+                    Safety always overrides taste or convenience.
+                    
+                    If you include an allergen, you have failed your core function.
+                    """)
                 .user(u -> u.text(template)
                         .param("userId", userId)
                         .param("ingredients", ingredients)
-                        .param("cuisine", cuisine))
+                        .param("cuisine", cuisine)
+                        .param("allergens", allergenList))
                 .call()
                 .content();
     }
 
-
-    @Bean
-    @Description("Get the list of food allergies for a specific user from the database")
-    public Function<UserAllergyRequest, UserAllergyResponse> getUserAllergies() {
+    // Helper method to create the allergy function (not a @Bean anymore)
+    private Function<UserAllergyRequest, UserAllergyResponse> createUserAllergyFunction() {
         return request -> {
             try {
                 Long userId = Long.parseLong(request.userId());
@@ -124,9 +191,8 @@ public class RecipeService {
         };
     }
 
-    @Bean
-    @Description("Check if a specific ingredient is currently available in inventory. Returns true if available, false if out of stock.")
-    public Function<IngredientCheckRequest, IngredientCheckResponse> checkIngredientAvailability() {
+    // Helper method to create the ingredient check function (not a @Bean anymore)
+    private Function<IngredientCheckRequest, IngredientCheckResponse> createIngredientCheckFunction() {
         return request -> {
             // Simulate inventory check
             String ingredient = request.ingredient().toLowerCase();
@@ -137,7 +203,19 @@ public class RecipeService {
         };
     }
 
-    // Records for function calling
+    // These @Bean methods are for Spring AI function calling
+    @Bean
+    @Description("Get the list of food allergies for a specific user from the database")
+    public Function<UserAllergyRequest, UserAllergyResponse> getUserAllergies() {
+        return createUserAllergyFunction();
+    }
+
+    @Bean
+    @Description("Check if a specific ingredient is currently available in inventory. Returns true if available, false if out of stock.")
+    public Function<IngredientCheckRequest, IngredientCheckResponse> checkIngredientAvailability() {
+        return createIngredientCheckFunction();
+    }
+
     public record UserAllergyRequest(String userId) {}
     public record UserAllergyResponse(List<String> allergies) {}
     public record IngredientCheckRequest(String ingredient) {}
