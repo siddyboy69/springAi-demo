@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/recipes")
+// SECURITY WARNING: @CrossOrigin(origins = "*") allows requests from ANY domain
+// This is acceptable for local development and demos, but in production you should restrict it:
+// @CrossOrigin(origins = "https://yourdomain.com")
 @CrossOrigin(origins = "*")
 public class RecipeController {
     private final RecipeService recipeService;

@@ -4,5 +4,5 @@ import jakarta.persistence.Embeddable;
 import jakarta.validation.constraints.NotNull;
 
 @Embeddable
-public record Allergy(@NotNull String Allergen) {
+public record Allergy(@NotNull String allergen) {
 }

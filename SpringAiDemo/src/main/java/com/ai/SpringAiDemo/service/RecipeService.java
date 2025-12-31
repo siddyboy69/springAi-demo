@@ -16,6 +16,10 @@ public class RecipeService {
     private final ChatClient chatClient;
     private final UserRepository userRepository;
     private final Function<UserAllergyRequest, UserAllergyResponse> userAllergyFunction;
+
+    // NOTE: ingredientCheckFunction is registered as a @Bean (line 214) and available for Spring AI to call
+    // Currently not used by any of the three recipe generation methods, but demonstrates how to register
+    // multiple functions that AI can choose from based on the prompt
     private final Function<IngredientCheckRequest, IngredientCheckResponse> ingredientCheckFunction;
 
     public RecipeService(ChatClient.Builder chatClientBuilder, UserRepository userRepository) {
@@ -175,13 +179,15 @@ public class RecipeService {
                 return userRepository.findById(userId)
                         .map(user -> new UserAllergyResponse(
                                 user.getAllergies().stream()
-                                        .map(Allergy::Allergen)
+                                        .map(Allergy::allergen)
                                         .toList()
                         ))
                         .orElse(new UserAllergyResponse(List.of()));
 
             } catch (NumberFormatException e) {
-                // Fallback for non-numeric IDs (backward compatibility)
+                // Fallback for non-numeric IDs (backward compatibility with tests)
+                // TODO: Remove this fallback once all tests use numeric IDs
+                // These hardcoded users exist only for RecipeServiceTest.java unit tests
                 return switch (request.userId()) {
                     case "user123" -> new UserAllergyResponse(List.of("peanuts", "shellfish", "dairy"));
                     case "user456" -> new UserAllergyResponse(List.of("gluten", "soy"));
